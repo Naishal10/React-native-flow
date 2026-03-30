@@ -1,6 +1,6 @@
-import React, { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback, useMemo, useState } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
   FlowCanvas,
@@ -11,190 +11,176 @@ import {
   Connection,
   applyNodeChanges,
   applyEdgeChanges,
-  NodeComponentProps,
-  Handle,
 } from './src/ReactNativeFlow';
 
-// ─── Custom Node Example ────────────────────────────────────────────
+// ─── Generate a large grid of nodes + edges ─────────────────────────
 
-const CustomNode: React.FC<NodeComponentProps> = ({ id, data, selected }) => {
-  return (
-    <View style={[customStyles.node, selected && customStyles.selected]}>
-      <Handle nodeId={id} type="target" position="top" />
-      <View style={customStyles.header}>
-        <Text style={customStyles.emoji}>{(data as any).emoji ?? '⚡'}</Text>
-        <Text style={customStyles.title}>{data.label ?? id}</Text>
-      </View>
-      {(data as any).description && (
-        <Text style={customStyles.description}>{(data as any).description}</Text>
-      )}
-      <Handle nodeId={id} type="source" position="bottom" />
-    </View>
-  );
+function generateStressTest(count: number): { nodes: Node[]; edges: Edge[] } {
+  const cols = Math.ceil(Math.sqrt(count));
+  const spacingX = 200;
+  const spacingY = 120;
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+
+    nodes.push({
+      id: `n${i}`,
+      type: 'default',
+      position: { x: col * spacingX, y: row * spacingY },
+      data: { label: `Node ${i}` },
+      width: 120,
+      height: 40,
+    });
+
+    if (col < cols - 1 && i + 1 < count) {
+      edges.push({
+        id: `e${i}-${i + 1}`,
+        source: `n${i}`,
+        target: `n${i + 1}`,
+        type: 'bezier',
+      });
+    }
+
+    if (row > 0) {
+      const aboveIdx = i - cols;
+      if (aboveIdx >= 0) {
+        edges.push({
+          id: `e${aboveIdx}-${i}`,
+          source: `n${aboveIdx}`,
+          target: `n${i}`,
+          type: 'bezier',
+        });
+      }
+    }
+  }
+
+  return { nodes, edges };
+}
+
+// ─── Small demo data ────────────────────────────────────────────────
+
+const smallDemo: { nodes: Node[]; edges: Edge[] } = {
+  nodes: [
+    { id: '1', type: 'input', position: { x: 100, y: 50 }, data: { label: 'Start' }, width: 120, height: 40 },
+    { id: '2', type: 'default', position: { x: 80, y: 180 }, data: { label: 'Process Data' }, width: 150, height: 40 },
+    { id: '3', type: 'default', position: { x: 60, y: 320 }, data: { label: 'Transform' }, width: 120, height: 40 },
+    { id: '4', type: 'default', position: { x: 250, y: 320 }, data: { label: 'Validate' }, width: 120, height: 40 },
+    { id: '5', type: 'output', position: { x: 140, y: 480 }, data: { label: 'Output' }, width: 120, height: 40 },
+  ],
+  edges: [
+    { id: 'e1-2', source: '1', target: '2', type: 'bezier', animated: true },
+    { id: 'e2-3', source: '2', target: '3', type: 'bezier', label: 'yes' },
+    { id: 'e2-4', source: '2', target: '4', type: 'bezier', label: 'no' },
+    { id: 'e3-5', source: '3', target: '5', type: 'bezier' },
+    { id: 'e4-5', source: '4', target: '5', type: 'bezier', style: { stroke: '#e94560', strokeWidth: 2 } },
+  ],
 };
 
-const customStyles = StyleSheet.create({
-  node: {
-    backgroundColor: '#1a1a2e',
-    borderWidth: 1,
-    borderColor: '#16213e',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minWidth: 160,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  selected: {
-    borderColor: '#e94560',
-    borderWidth: 2,
-    shadowColor: '#e94560',
-    shadowOpacity: 0.3,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  emoji: {
-    fontSize: 18,
-  },
-  title: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  description: {
-    fontSize: 11,
-    color: '#a0a0b0',
-    marginTop: 4,
-  },
-});
-
-// ─── Initial Data ───────────────────────────────────────────────────
-
-const initialNodes: Node[] = [
-  {
-    id: '1',
-    type: 'input',
-    position: { x: 100, y: 50 },
-    data: { label: 'Start' },
-    width: 120,
-    height: 40,
-  },
-  {
-    id: '2',
-    type: 'default',
-    position: { x: 80, y: 180 },
-    data: { label: 'Process Data' },
-    width: 150,
-    height: 40,
-  },
-  {
-    id: '3',
-    type: 'custom',
-    position: { x: 60, y: 320 },
-    data: {
-      label: 'Transform',
-      emoji: '🔄',
-      description: 'Apply transformations',
-    },
-    width: 160,
-    height: 65,
-  },
-  {
-    id: '4',
-    type: 'default',
-    position: { x: 250, y: 320 },
-    data: { label: 'Validate' },
-    width: 120,
-    height: 40,
-  },
-  {
-    id: '5',
-    type: 'output',
-    position: { x: 140, y: 480 },
-    data: { label: 'Output' },
-    width: 120,
-    height: 40,
-  },
-];
-
-const initialEdges: Edge[] = [
-  { id: 'e1-2', source: '1', target: '2', type: 'bezier', animated: true },
-  { id: 'e2-3', source: '2', target: '3', type: 'bezier', label: 'yes' },
-  { id: 'e2-4', source: '2', target: '4', type: 'bezier', label: 'no' },
-  { id: 'e3-5', source: '3', target: '5', type: 'bezier' },
-  {
-    id: 'e4-5',
-    source: '4',
-    target: '5',
-    type: 'bezier',
-    style: { stroke: '#e94560', strokeWidth: 2 },
-  },
-];
+type DemoMode = 'small' | '500' | '1000' | '2000';
 
 // ─── App ────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
+  const [mode, setMode] = useState<DemoMode>('small');
+  const [showMiniMap, setShowMiniMap] = useState(true);
 
-  const onNodesChange = useCallback(
-    (changes: NodeChange[]) => {
-      setNodes((nds) => applyNodeChanges(changes, nds));
-    },
-    []
-  );
+  const { defaultZoom } = useMemo(() => {
+    if (mode === 'small') return { defaultZoom: 0.85 };
+    return { defaultZoom: 0.35 };
+  }, [mode]);
 
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => {
-      setEdges((eds) => applyEdgeChanges(changes, eds));
-    },
-    []
-  );
+  const [nodes, setNodes] = useState<Node[]>(smallDemo.nodes);
+  const [edges, setEdges] = useState<Edge[]>(smallDemo.edges);
 
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      const newEdge: Edge = {
-        id: `e${connection.source}-${connection.target}`,
-        source: connection.source,
-        sourceHandle: connection.sourceHandle,
-        target: connection.target,
-        targetHandle: connection.targetHandle,
-        type: 'bezier',
-      };
-      setEdges((eds) => [...eds, newEdge]);
-    },
-    []
-  );
+  const switchMode = useCallback((newMode: DemoMode) => {
+    setMode(newMode);
+    setTimeout(() => {
+      if (newMode === 'small') {
+        setNodes(smallDemo.nodes);
+        setEdges(smallDemo.edges);
+      } else {
+        const count = newMode === '500' ? 500 : newMode === '1000' ? 1000 : 2000;
+        const data = generateStressTest(count);
+        setNodes(data.nodes);
+        setEdges(data.edges);
+      }
+    }, 0);
+  }, []);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setNodes((nds) => applyNodeChanges(changes, nds));
+  }, []);
+
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setEdges((eds) => applyEdgeChanges(changes, eds));
+  }, []);
+
+  const onConnect = useCallback((connection: Connection) => {
+    const newEdge: Edge = {
+      id: `e${connection.source}-${connection.target}`,
+      source: connection.source,
+      target: connection.target,
+      type: 'bezier',
+    };
+    setEdges((eds) => [...eds, newEdge]);
+  }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaProvider>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar style="dark" />
       <View style={styles.header}>
-        <Text style={styles.title}>React Native Flow</Text>
-        <Text style={styles.subtitle}>Drag nodes, pinch to zoom, pan to explore</Text>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.title}>React Native Flow</Text>
+            <Text style={styles.subtitle}>
+              {nodes.length} nodes, {edges.length} edges
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.toggleBtn, showMiniMap && styles.toggleBtnActive]}
+            onPress={() => setShowMiniMap((v) => !v)}
+          >
+            <Text style={[styles.toggleBtnText, showMiniMap && styles.toggleBtnTextActive]}>
+              Map
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.modeBar}>
+          {(['small', '500', '1000', '2000'] as DemoMode[]).map((m) => (
+            <TouchableOpacity
+              key={m}
+              style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
+              onPress={() => switchMode(m)}
+            >
+              <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>
+                {m === 'small' ? '5' : m}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
       <FlowCanvas
+        key={mode}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        nodeTypes={{ custom: CustomNode }}
-        defaultViewport={{ x: 20, y: 20, zoom: 0.85 }}
-        minZoom={0.2}
+        defaultViewport={{ x: 20, y: 20, zoom: defaultZoom }}
+        minZoom={1}
         maxZoom={3}
         snapToGrid={false}
-        showMiniMap={true}
+        showMiniMap={showMiniMap}
         showControls={true}
+        miniMapMaxNodes={100}
         style={styles.canvas}
       />
     </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -204,22 +190,69 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 8,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#1a1a2e',
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#888',
-    marginTop: 2,
+    marginTop: 1,
+  },
+  modeBar: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+  },
+  modeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#f0f0f0',
+  },
+  modeBtnActive: {
+    backgroundColor: '#1a1a2e',
+  },
+  modeBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  modeBtnTextActive: {
+    color: '#fff',
+  },
+  toggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  toggleBtnActive: {
+    backgroundColor: '#1a73e8',
+    borderColor: '#1a73e8',
+  },
+  toggleBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666',
+  },
+  toggleBtnTextActive: {
+    color: '#fff',
   },
   canvas: {
     flex: 1,

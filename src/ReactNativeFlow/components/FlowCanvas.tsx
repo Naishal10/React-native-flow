@@ -13,6 +13,8 @@ import { clamp, getVisibleNodeIds } from '../utils/geometry';
 interface FlowCanvasProps extends FlowProps {
   showMiniMap?: boolean;
   showControls?: boolean;
+  /** Max node rects rendered in the minimap. Defaults to 200. */
+  miniMapMaxNodes?: number;
 }
 
 export const FlowCanvas: React.FC<FlowCanvasProps> = ({
@@ -35,6 +37,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   children,
   showMiniMap = true,
   showControls = true,
+  miniMapMaxNodes = 200,
 }) => {
   const { state, actions, viewport, setViewport, fitView } = useFlow({
     nodes,
@@ -329,6 +332,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
             viewport={viewport}
             canvasWidth={canvasSize.width}
             canvasHeight={canvasSize.height}
+            maxNodes={miniMapMaxNodes}
           />
         )}
         {showControls && (
