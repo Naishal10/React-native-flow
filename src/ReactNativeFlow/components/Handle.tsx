@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, ViewStyle } from 'react-native';
 import { HandleProps } from '../types';
 import { useFlowContext } from '../store/FlowStore';
 
@@ -24,23 +24,42 @@ export const Handle: React.FC<HandleComponentProps> = ({
     actions.startConnection(nodeId, id ?? null, type);
   };
 
+  // Use a full-width or full-height wrapper to reliably center the dot
+  const isVertical = position === 'top' || position === 'bottom';
+
+  const wrapperStyle: ViewStyle = isVertical
+    ? {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        ...(position === 'top' ? { top: -HANDLE_SIZE / 2 } : { bottom: -HANDLE_SIZE / 2 }),
+      }
+    : {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        ...(position === 'left' ? { left: -HANDLE_SIZE / 2 } : { right: -HANDLE_SIZE / 2 }),
+      };
+
   return (
-    <View
-      style={[
-        styles.handle,
-        type === 'source' ? styles.source : styles.target,
-        positionStyles[position],
-        !isConnectable && styles.notConnectable,
-        style,
-      ]}
-      onTouchStart={handlePressIn}
-    />
+    <View style={wrapperStyle} pointerEvents="box-none">
+      <View
+        style={[
+          styles.handle,
+          type === 'source' ? styles.source : styles.target,
+          !isConnectable && styles.notConnectable,
+          style,
+        ]}
+        onTouchStart={handlePressIn}
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   handle: {
-    position: 'absolute',
     width: HANDLE_SIZE,
     height: HANDLE_SIZE,
     borderRadius: HANDLE_SIZE / 2,
@@ -56,29 +75,5 @@ const styles = StyleSheet.create({
   },
   notConnectable: {
     opacity: 0.4,
-  },
-});
-
-// Separate so we can use transform for reliable centering
-const positionStyles = StyleSheet.create({
-  top: {
-    top: -HANDLE_SIZE / 2,
-    left: '50%',
-    transform: [{ translateX: -HANDLE_SIZE / 2 }],
-  },
-  bottom: {
-    bottom: -HANDLE_SIZE / 2,
-    left: '50%',
-    transform: [{ translateX: -HANDLE_SIZE / 2 }],
-  },
-  left: {
-    left: -HANDLE_SIZE / 2,
-    top: '50%',
-    transform: [{ translateY: -HANDLE_SIZE / 2 }],
-  },
-  right: {
-    right: -HANDLE_SIZE / 2,
-    top: '50%',
-    transform: [{ translateY: -HANDLE_SIZE / 2 }],
   },
 });

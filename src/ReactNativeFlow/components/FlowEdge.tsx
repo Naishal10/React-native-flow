@@ -75,13 +75,13 @@ export const FlowEdge: React.FC<FlowEdgeProps> = ({
         <Marker
           id={markerId}
           viewBox="0 0 10 10"
-          refX="8"
+          refX="10"
           refY="5"
-          markerWidth={8}
-          markerHeight={8}
+          markerWidth={5}
+          markerHeight={5}
           orient="auto-start-reverse"
         >
-          <Polygon points="0,0 10,5 0,10" fill={strokeColor} />
+          <Polygon points="0,1 10,5 0,9" fill={strokeColor} />
         </Marker>
       </Defs>
 
@@ -117,7 +117,6 @@ interface EdgeLabelProps {
 }
 
 export const EdgeLabel: React.FC<EdgeLabelProps> = ({ label, x, y, selected, viewport }) => {
-  // Convert flow coordinates to screen coordinates
   const screenX = x * viewport.zoom + viewport.x;
   const screenY = y * viewport.zoom + viewport.y;
 

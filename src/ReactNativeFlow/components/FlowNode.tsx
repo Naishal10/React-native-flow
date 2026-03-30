@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { View, PanResponder, StyleSheet } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { View, PanResponder, StyleSheet, LayoutChangeEvent } from 'react-native';
 import { Node, NodeTypes } from '../types';
 import { useFlowContext } from '../store/FlowStore';
 import { DefaultNode, InputNode, OutputNode } from './DefaultNode';
@@ -11,13 +11,14 @@ const builtInNodeTypes: NodeTypes = {
   output: OutputNode as any,
 };
 
-const LONG_PRESS_DURATION = 200; // ms before drag activates
+const LONG_PRESS_DURATION = 200;
 
 interface FlowNodeProps {
   node: Node;
   nodeTypes?: NodeTypes;
   snapGrid?: [number, number];
   enableSnap?: boolean;
+  onMeasured?: (id: string, width: number, height: number) => void;
 }
 
 export const FlowNode: React.FC<FlowNodeProps> = ({
@@ -25,12 +26,12 @@ export const FlowNode: React.FC<FlowNodeProps> = ({
   nodeTypes,
   snapGrid = [15, 15],
   enableSnap = false,
+  onMeasured,
 }) => {
   const { state, actions } = useFlowContext();
   const { viewport } = state;
   const [isDragging, setIsDragging] = useState(false);
 
-  // Refs so PanResponder closures always see latest values
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const nodeRef = useRef(node);
@@ -41,6 +42,19 @@ export const FlowNode: React.FC<FlowNodeProps> = ({
   const dragStartPos = useRef({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const measuredRef = useRef(false);
+
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      // Only report once (or when size changes significantly)
+      if (!measuredRef.current && onMeasured) {
+        measuredRef.current = true;
+        onMeasured(node.id, width, height);
+      }
+    },
+    [node.id, onMeasured]
+  );
 
   const panResponder = useRef(
     PanResponder.create({
@@ -48,7 +62,6 @@ export const FlowNode: React.FC<FlowNodeProps> = ({
       onMoveShouldSetPanResponder: () => isDraggingRef.current,
       onStartShouldSetPanResponderCapture: () => nodeRef.current.draggable !== false,
       onMoveShouldSetPanResponderCapture: () => false,
-      // Once long-press drag is active, don't let canvas steal the gesture
       onPanResponderTerminationRequest: () => !isDraggingRef.current,
       onPanResponderGrant: () => {
         actionsRef.current.selectNode(nodeRef.current.id);
@@ -56,14 +69,12 @@ export const FlowNode: React.FC<FlowNodeProps> = ({
           x: nodeRef.current.position.x,
           y: nodeRef.current.position.y,
         };
-        // Start long-press timer
         longPressTimer.current = setTimeout(() => {
           isDraggingRef.current = true;
           setIsDragging(true);
         }, LONG_PRESS_DURATION);
       },
       onPanResponderMove: (_evt, gestureState) => {
-        // If finger moved too far before long-press, cancel it
         if (!isDraggingRef.current) {
           if (Math.abs(gestureState.dx) > 8 || Math.abs(gestureState.dy) > 8) {
             if (longPressTimer.current) {
@@ -136,6 +147,7 @@ export const FlowNode: React.FC<FlowNodeProps> = ({
 
   return (
     <View
+      onLayout={handleLayout}
       style={[
         styles.nodeWrapper,
         {

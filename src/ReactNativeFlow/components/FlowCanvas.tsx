@@ -49,7 +49,9 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
 
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
-  // Use refs so PanResponder closures always see latest values
+  // Store measured node dimensions (actual rendered sizes)
+  const [measuredSizes, setMeasuredSizes] = useState<Map<string, { width: number; height: number }>>(new Map());
+
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const setViewportRef = useRef(setViewport);
@@ -63,17 +65,22 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     setCanvasSize({ width, height });
   }, []);
 
+  const handleNodeMeasured = useCallback((id: string, width: number, height: number) => {
+    setMeasuredSizes((prev) => {
+      const next = new Map(prev);
+      next.set(id, { width, height });
+      return next;
+    });
+  }, []);
+
   const panResponder = useRef(
     PanResponder.create({
-      // Don't capture on start — let child nodes claim the touch first
       onStartShouldSetPanResponder: () => false,
       onStartShouldSetPanResponderCapture: () => false,
-      // Only claim on move if it looks like a canvas pan (not a node drag)
       onMoveShouldSetPanResponder: (_evt, gestureState) => {
         return Math.abs(gestureState.dx) > 4 || Math.abs(gestureState.dy) > 4;
       },
       onMoveShouldSetPanResponderCapture: (evt) => {
-        // Capture pinch (2+ fingers) immediately
         return evt.nativeEvent.touches.length >= 2;
       },
       onPanResponderGrant: (evt) => {
@@ -95,7 +102,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         const touches = evt.nativeEvent.touches;
 
         if (touches.length >= 2 && zoomOnPinch) {
-          // Pinch to zoom
           const dx = touches[0].pageX - touches[1].pageX;
           const dy = touches[0].pageY - touches[1].pageY;
           const dist = Math.sqrt(dx * dx + dy * dy);
@@ -117,7 +123,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
           lastPinchDistance.current = dist;
           lastPanPosition.current = null;
         } else if (touches.length === 1 && panOnDrag) {
-          // Pan
           const currentPos = { x: touches[0].pageX, y: touches[0].pageY };
           if (lastPanPosition.current) {
             const ddx = currentPos.x - lastPanPosition.current.x;
@@ -156,9 +161,18 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     fitView(canvasSize.width, canvasSize.height);
   }, [fitView, canvasSize]);
 
-  // Build node lookup for edge rendering
+  // Build node lookup using measured sizes (fall back to node.width/height)
+  const getNodeWithSize = (node: Node): Node => {
+    const measured = measuredSizes.get(node.id);
+    if (measured) {
+      return { ...node, width: measured.width, height: measured.height };
+    }
+    return node;
+  };
+
+  const sizedNodes = nodes.map(getNodeWithSize);
   const nodeMap = new Map<string, Node>();
-  nodes.forEach((n) => nodeMap.set(n.id, n));
+  sizedNodes.forEach((n) => nodeMap.set(n.id, n));
 
   return (
     <FlowContext.Provider value={{ state, actions }}>
@@ -194,7 +208,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
             </G>
           </Svg>
 
-          {/* Edge labels (rendered as RN views — must use viewport transform) */}
+          {/* Edge labels */}
           {edges
             .filter((e) => e.label && !e.hidden)
             .map((edge) => {
@@ -202,7 +216,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
               const targetNode = nodeMap.get(edge.target);
               if (!sourceNode || !targetNode) return null;
 
-              // Compute center in flow coords
               const flowCenterX =
                 (sourceNode.position.x + (sourceNode.width ?? 150) / 2 +
                   targetNode.position.x + (targetNode.width ?? 150) / 2) /
@@ -232,6 +245,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
               nodeTypes={nodeTypes}
               snapGrid={snapGrid}
               enableSnap={enableSnap}
+              onMeasured={handleNodeMeasured}
             />
           ))}
         </View>
@@ -239,7 +253,7 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         {/* Overlays */}
         {showMiniMap && (
           <MiniMap
-            nodes={nodes}
+            nodes={sizedNodes}
             viewport={viewport}
             canvasWidth={canvasSize.width}
             canvasHeight={canvasSize.height}
