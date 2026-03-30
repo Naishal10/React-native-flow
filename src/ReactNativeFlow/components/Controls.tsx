@@ -8,7 +8,7 @@ interface ControlsProps {
   style?: object;
 }
 
-export const Controls: React.FC<ControlsProps> = ({
+export const Controls = React.memo<ControlsProps>(({
   onZoomIn,
   onZoomOut,
   onFitView,
@@ -29,7 +29,7 @@ export const Controls: React.FC<ControlsProps> = ({
       </TouchableOpacity>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

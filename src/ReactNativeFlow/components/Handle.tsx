@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { HandleProps } from '../types';
 import { useFlowContext } from '../store/FlowStore';
@@ -9,7 +9,7 @@ interface HandleComponentProps extends HandleProps {
   nodeId: string;
 }
 
-export const Handle: React.FC<HandleComponentProps> = ({
+export const Handle = React.memo<HandleComponentProps>(({
   id,
   type,
   position,
@@ -19,29 +19,31 @@ export const Handle: React.FC<HandleComponentProps> = ({
 }) => {
   const { actions } = useFlowContext();
 
-  const handlePressIn = () => {
-    if (!isConnectable) return;
-    actions.startConnection(nodeId, id ?? null, type);
-  };
-
-  // Use a full-width or full-height wrapper to reliably center the dot
   const isVertical = position === 'top' || position === 'bottom';
 
-  const wrapperStyle: ViewStyle = isVertical
-    ? {
+  const wrapperStyle = useMemo<ViewStyle>(() => {
+    if (isVertical) {
+      return {
         position: 'absolute',
         left: 0,
         right: 0,
         alignItems: 'center',
         ...(position === 'top' ? { top: -HANDLE_SIZE / 2 } : { bottom: -HANDLE_SIZE / 2 }),
-      }
-    : {
-        position: 'absolute',
-        top: 0,
-        bottom: 0,
-        justifyContent: 'center',
-        ...(position === 'left' ? { left: -HANDLE_SIZE / 2 } : { right: -HANDLE_SIZE / 2 }),
       };
+    }
+    return {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      ...(position === 'left' ? { left: -HANDLE_SIZE / 2 } : { right: -HANDLE_SIZE / 2 }),
+    };
+  }, [position, isVertical]);
+
+  const handlePressIn = () => {
+    if (!isConnectable) return;
+    actions.startConnection(nodeId, id ?? null, type);
+  };
 
   return (
     <View style={wrapperStyle} pointerEvents="box-none">
@@ -56,7 +58,7 @@ export const Handle: React.FC<HandleComponentProps> = ({
       />
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   handle: {

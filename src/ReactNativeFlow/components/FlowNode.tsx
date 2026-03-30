@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { View, PanResponder, StyleSheet, LayoutChangeEvent } from 'react-native';
-import { Node, NodeTypes } from '../types';
-import { useFlowContext } from '../store/FlowStore';
+import { Node, NodeTypes, Viewport } from '../types';
+import { FlowActions } from '../store/FlowStore';
 import { DefaultNode, InputNode, OutputNode } from './DefaultNode';
 import { snapToGrid } from '../utils/geometry';
 
@@ -15,23 +15,30 @@ const LONG_PRESS_DURATION = 200;
 
 interface FlowNodeProps {
   node: Node;
+  screenX: number;
+  screenY: number;
+  viewport: Viewport;
+  actions: FlowActions;
   nodeTypes?: NodeTypes;
   snapGrid?: [number, number];
   enableSnap?: boolean;
   onMeasured?: (id: string, width: number, height: number) => void;
 }
 
-export const FlowNode: React.FC<FlowNodeProps> = ({
+export const FlowNode = React.memo<FlowNodeProps>(({
   node,
+  screenX,
+  screenY,
+  viewport,
+  actions,
   nodeTypes,
   snapGrid = [15, 15],
   enableSnap = false,
   onMeasured,
 }) => {
-  const { state, actions } = useFlowContext();
-  const { viewport } = state;
   const [isDragging, setIsDragging] = useState(false);
 
+  // Refs so PanResponder closures always see latest values
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const nodeRef = useRef(node);
@@ -47,7 +54,6 @@ export const FlowNode: React.FC<FlowNodeProps> = ({
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { width, height } = event.nativeEvent.layout;
-      // Only report once (or when size changes significantly)
       if (!measuredRef.current && onMeasured) {
         measuredRef.current = true;
         onMeasured(node.id, width, height);
@@ -142,9 +148,6 @@ export const FlowNode: React.FC<FlowNodeProps> = ({
 
   if (node.hidden) return null;
 
-  const screenX = node.position.x * viewport.zoom + viewport.x;
-  const screenY = node.position.y * viewport.zoom + viewport.y;
-
   return (
     <View
       onLayout={handleLayout}
@@ -169,7 +172,17 @@ export const FlowNode: React.FC<FlowNodeProps> = ({
       />
     </View>
   );
-};
+}, (prev, next) => {
+  // Custom comparator: only re-render when visual output changes
+  return (
+    prev.node === next.node &&
+    prev.screenX === next.screenX &&
+    prev.screenY === next.screenY &&
+    prev.viewport.zoom === next.viewport.zoom &&
+    prev.nodeTypes === next.nodeTypes &&
+    prev.enableSnap === next.enableSnap
+  );
+});
 
 const styles = StyleSheet.create({
   nodeWrapper: {

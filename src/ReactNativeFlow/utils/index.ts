@@ -7,6 +7,8 @@ export {
   flowToScreen,
   isPointInsideNode,
   getNodesBounds,
+  isNodeInViewport,
+  getVisibleNodeIds,
 } from './geometry';
 
 export {

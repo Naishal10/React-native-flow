@@ -12,7 +12,7 @@ interface FlowEdgeProps {
   onPress?: (edge: Edge) => void;
 }
 
-export const FlowEdge: React.FC<FlowEdgeProps> = ({
+export const FlowEdge = React.memo<FlowEdgeProps>(({
   edge,
   sourceNode,
   targetNode,
@@ -21,46 +21,43 @@ export const FlowEdge: React.FC<FlowEdgeProps> = ({
   const sourceHandlePos: HandlePosition = 'bottom';
   const targetHandlePos: HandlePosition = 'top';
 
-  const sourcePos = getHandlePosition(
-    sourceHandlePos,
-    sourceNode.position,
-    sourceNode.width,
-    sourceNode.height
-  );
-
-  const targetPos = getHandlePosition(
-    targetHandlePos,
-    targetNode.position,
-    targetNode.width,
-    targetNode.height
-  );
-
-  const pathParams = {
-    sourceX: sourcePos.x,
-    sourceY: sourcePos.y,
-    sourcePosition: sourceHandlePos,
-    targetX: targetPos.x,
-    targetY: targetPos.y,
-    targetPosition: targetHandlePos,
-  };
-
   const pathData = useMemo(() => {
+    const sourcePos = getHandlePosition(
+      sourceHandlePos,
+      sourceNode.position,
+      sourceNode.width,
+      sourceNode.height
+    );
+    const targetPos = getHandlePosition(
+      targetHandlePos,
+      targetNode.position,
+      targetNode.width,
+      targetNode.height
+    );
+
+    const params = {
+      sourceX: sourcePos.x,
+      sourceY: sourcePos.y,
+      sourcePosition: sourceHandlePos,
+      targetX: targetPos.x,
+      targetY: targetPos.y,
+      targetPosition: targetHandlePos,
+    };
+
     switch (edge.type) {
       case 'straight':
-        return getStraightPath(pathParams);
+        return getStraightPath(params);
       case 'step':
       case 'smoothstep':
-        return getSmoothStepPath(pathParams);
+        return getSmoothStepPath(params);
       case 'bezier':
       default:
-        return getBezierPath(pathParams);
+        return getBezierPath(params);
     }
   }, [
     edge.type,
-    pathParams.sourceX,
-    pathParams.sourceY,
-    pathParams.targetX,
-    pathParams.targetY,
+    sourceNode.position.x, sourceNode.position.y, sourceNode.width, sourceNode.height,
+    targetNode.position.x, targetNode.position.y, targetNode.width, targetNode.height,
   ]);
 
   const strokeColor = edge.style?.stroke ?? (edge.selected ? '#1a73e8' : '#b1b1b7');
@@ -85,7 +82,6 @@ export const FlowEdge: React.FC<FlowEdgeProps> = ({
         </Marker>
       </Defs>
 
-      {/* Invisible wider path for easier touch target */}
       <Path
         d={pathData}
         stroke="transparent"
@@ -94,7 +90,6 @@ export const FlowEdge: React.FC<FlowEdgeProps> = ({
         onPress={() => onPress?.(edge)}
       />
 
-      {/* Visible edge path */}
       <Path
         d={pathData}
         stroke={strokeColor}
@@ -106,7 +101,7 @@ export const FlowEdge: React.FC<FlowEdgeProps> = ({
       />
     </>
   );
-};
+});
 
 interface EdgeLabelProps {
   label: string;
@@ -116,7 +111,7 @@ interface EdgeLabelProps {
   viewport: Viewport;
 }
 
-export const EdgeLabel: React.FC<EdgeLabelProps> = ({ label, x, y, selected, viewport }) => {
+export const EdgeLabel = React.memo<EdgeLabelProps>(({ label, x, y, selected, viewport }) => {
   const screenX = x * viewport.zoom + viewport.x;
   const screenY = y * viewport.zoom + viewport.y;
 
@@ -136,7 +131,7 @@ export const EdgeLabel: React.FC<EdgeLabelProps> = ({ label, x, y, selected, vie
       <Text style={[styles.labelText, selected && styles.selectedLabel]}>{label}</Text>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   labelContainer: {

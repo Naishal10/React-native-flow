@@ -59,25 +59,35 @@ export interface FlowActions {
   getHandlePosition: (nodeId: string, handleType: 'source' | 'target', handleId?: string) => XYPosition | null;
 }
 
-// ─── Apply helpers ──────────────────────────────────────────────────
+// ─── Apply helpers (Map-based O(1) lookups) ─────────────────────────
 
 export function applyNodeChanges(changes: NodeChange[], nodes: Node[]): Node[] {
-  let result = [...nodes];
+  if (changes.length === 0) return nodes;
+
+  // Build index for O(1) lookups
+  const indexMap = new Map<string, number>();
+  nodes.forEach((n, i) => indexMap.set(n.id, i));
+
+  let result: Node[] | null = null; // lazy copy
+  const removals = new Set<string>();
+  const additions: Node[] = [];
 
   for (const change of changes) {
     switch (change.type) {
       case 'position': {
-        const index = result.findIndex((n) => n.id === change.id);
-        if (index !== -1) {
-          result[index] = { ...result[index], position: change.position };
+        const idx = indexMap.get(change.id);
+        if (idx !== undefined) {
+          if (!result) result = [...nodes];
+          result[idx] = { ...result[idx], position: change.position };
         }
         break;
       }
       case 'dimensions': {
-        const index = result.findIndex((n) => n.id === change.id);
-        if (index !== -1) {
-          result[index] = {
-            ...result[index],
+        const idx = indexMap.get(change.id);
+        if (idx !== undefined) {
+          if (!result) result = [...nodes];
+          result[idx] = {
+            ...result[idx],
             width: change.dimensions.width,
             height: change.dimensions.height,
           };
@@ -85,46 +95,75 @@ export function applyNodeChanges(changes: NodeChange[], nodes: Node[]): Node[] {
         break;
       }
       case 'select': {
-        const index = result.findIndex((n) => n.id === change.id);
-        if (index !== -1) {
-          result[index] = { ...result[index], selected: change.selected };
+        const idx = indexMap.get(change.id);
+        if (idx !== undefined) {
+          if (!result) result = [...nodes];
+          result[idx] = { ...result[idx], selected: change.selected };
         }
         break;
       }
       case 'remove':
-        result = result.filter((n) => n.id !== change.id);
+        removals.add(change.id);
         break;
       case 'add':
-        result.push(change.item);
+        additions.push(change.item);
         break;
     }
   }
 
-  return result;
+  if (!result && removals.size === 0 && additions.length === 0) return nodes;
+
+  let final = result ?? nodes;
+  if (removals.size > 0) {
+    final = final.filter((n) => !removals.has(n.id));
+  }
+  if (additions.length > 0) {
+    final = [...final, ...additions];
+  }
+
+  return final;
 }
 
 export function applyEdgeChanges(changes: EdgeChange[], edges: Edge[]): Edge[] {
-  let result = [...edges];
+  if (changes.length === 0) return edges;
+
+  const indexMap = new Map<string, number>();
+  edges.forEach((e, i) => indexMap.set(e.id, i));
+
+  let result: Edge[] | null = null;
+  const removals = new Set<string>();
+  const additions: Edge[] = [];
 
   for (const change of changes) {
     switch (change.type) {
       case 'select': {
-        const index = result.findIndex((e) => e.id === change.id);
-        if (index !== -1) {
-          result[index] = { ...result[index], selected: change.selected };
+        const idx = indexMap.get(change.id);
+        if (idx !== undefined) {
+          if (!result) result = [...edges];
+          result[idx] = { ...result[idx], selected: change.selected };
         }
         break;
       }
       case 'remove':
-        result = result.filter((e) => e.id !== change.id);
+        removals.add(change.id);
         break;
       case 'add':
-        result.push(change.item);
+        additions.push(change.item);
         break;
     }
   }
 
-  return result;
+  if (!result && removals.size === 0 && additions.length === 0) return edges;
+
+  let final = result ?? edges;
+  if (removals.size > 0) {
+    final = final.filter((e) => !removals.has(e.id));
+  }
+  if (additions.length > 0) {
+    final = [...final, ...additions];
+  }
+
+  return final;
 }
 
 // ─── Context ────────────────────────────────────────────────────────

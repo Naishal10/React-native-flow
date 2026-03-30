@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, LayoutChangeEvent, PanResponder } from 'react-native';
 import Svg, { G } from 'react-native-svg';
 import { FlowProps, Node, Edge } from '../types';
@@ -8,7 +8,7 @@ import { FlowNode } from './FlowNode';
 import { FlowEdge, EdgeLabel } from './FlowEdge';
 import { MiniMap } from './MiniMap';
 import { Controls } from './Controls';
-import { clamp } from '../utils/geometry';
+import { clamp, getVisibleNodeIds } from '../utils/geometry';
 
 interface FlowCanvasProps extends FlowProps {
   showMiniMap?: boolean;
@@ -48,8 +48,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
   });
 
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-
-  // Store measured node dimensions (actual rendered sizes)
   const [measuredSizes, setMeasuredSizes] = useState<Map<string, { width: number; height: number }>>(new Map());
 
   const viewportRef = useRef(viewport);
@@ -67,6 +65,10 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
 
   const handleNodeMeasured = useCallback((id: string, width: number, height: number) => {
     setMeasuredSizes((prev) => {
+      const existing = prev.get(id);
+      if (existing && Math.abs(existing.width - width) < 1 && Math.abs(existing.height - height) < 1) {
+        return prev;
+      }
       const next = new Map(prev);
       next.set(id, { width, height });
       return next;
@@ -161,96 +163,166 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
     fitView(canvasSize.width, canvasSize.height);
   }, [fitView, canvasSize]);
 
-  // Build node lookup using measured sizes (fall back to node.width/height)
-  const getNodeWithSize = (node: Node): Node => {
-    const measured = measuredSizes.get(node.id);
-    if (measured) {
-      return { ...node, width: measured.width, height: measured.height };
-    }
-    return node;
-  };
+  const handleZoomIn = useCallback(() => {
+    setViewport({ ...viewport, zoom: Math.min(viewport.zoom * 1.2, maxZoom) });
+  }, [viewport, setViewport, maxZoom]);
 
-  const sizedNodes = nodes.map(getNodeWithSize);
-  const nodeMap = new Map<string, Node>();
-  sizedNodes.forEach((n) => nodeMap.set(n.id, n));
+  const handleZoomOut = useCallback(() => {
+    setViewport({ ...viewport, zoom: Math.max(viewport.zoom / 1.2, minZoom) });
+  }, [viewport, setViewport, minZoom]);
+
+  // ─── Memoized data ────────────────────────────────────────────────
+
+  // Merge measured sizes into nodes
+  const sizedNodes = useMemo(() => {
+    if (measuredSizes.size === 0) return nodes;
+    return nodes.map((node) => {
+      const measured = measuredSizes.get(node.id);
+      return measured ? { ...node, width: measured.width, height: measured.height } : node;
+    });
+  }, [nodes, measuredSizes]);
+
+  // Node map for O(1) edge lookups
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, Node>();
+    sizedNodes.forEach((n) => map.set(n.id, n));
+    return map;
+  }, [sizedNodes]);
+
+  // ─── Viewport culling ─────────────────────────────────────────────
+
+  // Visible node IDs (null = canvas not measured yet, render all)
+  const visibleNodeIds = useMemo(() => {
+    if (canvasSize.width === 0 || canvasSize.height === 0) return null;
+    return getVisibleNodeIds(sizedNodes, viewport, canvasSize.width, canvasSize.height, 0.5);
+  }, [sizedNodes, viewport, canvasSize.width, canvasSize.height]);
+
+  // Nodes that haven't been measured yet — must render for onLayout
+  const unmeasuredNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const node of nodes) {
+      if (!node.hidden && !measuredSizes.has(node.id)) {
+        ids.add(node.id);
+      }
+    }
+    return ids;
+  }, [nodes, measuredSizes]);
+
+  // Final list of nodes to render
+  const nodesToRender = useMemo(() => {
+    if (visibleNodeIds === null) {
+      return sizedNodes.filter((n) => !n.hidden);
+    }
+    return sizedNodes.filter((node) => {
+      if (node.hidden) return false;
+      if (visibleNodeIds.has(node.id)) return true;
+      if (node.selected) return true; // keep dragging nodes rendered
+      if (unmeasuredNodeIds.has(node.id)) return true;
+      return false;
+    });
+  }, [sizedNodes, visibleNodeIds, unmeasuredNodeIds]);
+
+  // Set of rendered node IDs for edge culling
+  const renderNodeIdSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of nodesToRender) set.add(n.id);
+    return set;
+  }, [nodesToRender]);
+
+  // Visible edges: not hidden AND at least one endpoint in render set
+  const visibleEdges = useMemo(() => {
+    return edges.filter((e) => {
+      if (e.hidden) return false;
+      if (visibleNodeIds === null) return true; // no culling yet
+      return renderNodeIdSet.has(e.source) || renderNodeIdSet.has(e.target);
+    });
+  }, [edges, visibleNodeIds, renderNodeIdSet]);
+
+  const labeledEdges = useMemo(() => visibleEdges.filter((e) => e.label), [visibleEdges]);
+
+  // Context value (still needed for Handle components)
+  const contextValue = useMemo(() => ({ state, actions }), [state, actions]);
+
+  // ─── Render ───────────────────────────────────────────────────────
 
   return (
-    <FlowContext.Provider value={{ state, actions }}>
+    <FlowContext.Provider value={contextValue}>
       <View style={[styles.container, style]} onLayout={onLayout}>
-        {/* Pan/Zoom layer */}
         <View style={styles.canvas} {...panResponder.panHandlers}>
-          {/* Background touch area */}
           <View
             style={StyleSheet.absoluteFill}
             onTouchEnd={handlePanePress}
           />
 
-          {/* SVG edges layer */}
+          {/* SVG edges */}
           <Svg style={StyleSheet.absoluteFill} pointerEvents="box-none">
             <G transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`}>
-              {edges
-                .filter((e) => !e.hidden)
-                .map((edge) => {
-                  const sourceNode = nodeMap.get(edge.source);
-                  const targetNode = nodeMap.get(edge.target);
-                  if (!sourceNode || !targetNode) return null;
-
-                  return (
-                    <FlowEdge
-                      key={edge.id}
-                      edge={edge}
-                      sourceNode={sourceNode}
-                      targetNode={targetNode}
-                      onPress={handleEdgePress}
-                    />
-                  );
-                })}
+              {visibleEdges.map((edge) => {
+                const sourceNode = nodeMap.get(edge.source);
+                const targetNode = nodeMap.get(edge.target);
+                if (!sourceNode || !targetNode) return null;
+                return (
+                  <FlowEdge
+                    key={edge.id}
+                    edge={edge}
+                    sourceNode={sourceNode}
+                    targetNode={targetNode}
+                    onPress={handleEdgePress}
+                  />
+                );
+              })}
             </G>
           </Svg>
 
           {/* Edge labels */}
-          {edges
-            .filter((e) => e.label && !e.hidden)
-            .map((edge) => {
-              const sourceNode = nodeMap.get(edge.source);
-              const targetNode = nodeMap.get(edge.target);
-              if (!sourceNode || !targetNode) return null;
+          {labeledEdges.map((edge) => {
+            const sourceNode = nodeMap.get(edge.source);
+            const targetNode = nodeMap.get(edge.target);
+            if (!sourceNode || !targetNode) return null;
 
-              const flowCenterX =
-                (sourceNode.position.x + (sourceNode.width ?? 150) / 2 +
-                  targetNode.position.x + (targetNode.width ?? 150) / 2) /
-                2;
-              const flowCenterY =
-                (sourceNode.position.y + (sourceNode.height ?? 40) +
-                  targetNode.position.y) /
-                2;
+            const flowCenterX =
+              (sourceNode.position.x + (sourceNode.width ?? 150) / 2 +
+                targetNode.position.x + (targetNode.width ?? 150) / 2) /
+              2;
+            const flowCenterY =
+              (sourceNode.position.y + (sourceNode.height ?? 40) +
+                targetNode.position.y) /
+              2;
 
-              return (
-                <EdgeLabel
-                  key={`label-${edge.id}`}
-                  label={edge.label!}
-                  x={flowCenterX}
-                  y={flowCenterY}
-                  selected={edge.selected}
-                  viewport={viewport}
-                />
-              );
-            })}
+            return (
+              <EdgeLabel
+                key={`label-${edge.id}`}
+                label={edge.label!}
+                x={flowCenterX}
+                y={flowCenterY}
+                selected={edge.selected}
+                viewport={viewport}
+              />
+            );
+          })}
 
-          {/* Nodes layer */}
-          {nodes.map((node) => (
-            <FlowNode
-              key={node.id}
-              node={node}
-              nodeTypes={nodeTypes}
-              snapGrid={snapGrid}
-              enableSnap={enableSnap}
-              onMeasured={handleNodeMeasured}
-            />
-          ))}
+          {/* Nodes — only render what's visible */}
+          {nodesToRender.map((node) => {
+            const sx = node.position.x * viewport.zoom + viewport.x;
+            const sy = node.position.y * viewport.zoom + viewport.y;
+            return (
+              <FlowNode
+                key={node.id}
+                node={node}
+                screenX={sx}
+                screenY={sy}
+                viewport={viewport}
+                actions={actions}
+                nodeTypes={nodeTypes}
+                snapGrid={snapGrid}
+                enableSnap={enableSnap}
+                onMeasured={handleNodeMeasured}
+              />
+            );
+          })}
         </View>
 
-        {/* Overlays */}
+        {/* MiniMap always gets ALL nodes */}
         {showMiniMap && (
           <MiniMap
             nodes={sizedNodes}
@@ -261,12 +333,8 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({
         )}
         {showControls && (
           <Controls
-            onZoomIn={() =>
-              setViewport({ ...viewport, zoom: Math.min(viewport.zoom * 1.2, maxZoom) })
-            }
-            onZoomOut={() =>
-              setViewport({ ...viewport, zoom: Math.max(viewport.zoom / 1.2, minZoom) })
-            }
+            onZoomIn={handleZoomIn}
+            onZoomOut={handleZoomOut}
             onFitView={handleFitView}
           />
         )}

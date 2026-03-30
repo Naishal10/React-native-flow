@@ -15,7 +15,7 @@ interface MiniMapProps {
   style?: object;
 }
 
-export const MiniMap: React.FC<MiniMapProps> = ({
+export const MiniMap = React.memo<MiniMapProps>(({
   nodes,
   viewport,
   canvasWidth,
@@ -25,17 +25,21 @@ export const MiniMap: React.FC<MiniMapProps> = ({
   nodeColor = '#d0d0d0',
   style,
 }) => {
-  const { bounds, scale } = useMemo(() => {
-    if (nodes.length === 0) {
+  const { bounds, scale, rectX, rectY, rectW, rectH, visibleNodes } = useMemo(() => {
+    const visibleNodes = nodes.filter((n) => !n.hidden);
+
+    if (visibleNodes.length === 0) {
       return {
         bounds: { x: 0, y: 0, width: 400, height: 400 },
         scale: Math.min(width / 400, height / 400),
+        rectX: 0, rectY: 0, rectW: width, rectH: height,
+        visibleNodes: [],
       };
     }
 
-    const b = getNodesBounds(nodes);
+    const b = getNodesBounds(visibleNodes);
     const padding = 60;
-    // Factor in the visible area so the minimap shows enough context
+
     const visibleW = canvasWidth / viewport.zoom;
     const visibleH = canvasHeight / viewport.zoom;
     const visibleLeft = -viewport.x / viewport.zoom;
@@ -48,48 +52,38 @@ export const MiniMap: React.FC<MiniMapProps> = ({
 
     const fullW = fullMaxX - fullMinX;
     const fullH = fullMaxY - fullMinY;
-
     const s = Math.min(width / fullW, height / fullH);
+
+    const boundsResult = { x: fullMinX, y: fullMinY, width: fullW, height: fullH };
+
     return {
-      bounds: { x: fullMinX, y: fullMinY, width: fullW, height: fullH },
+      bounds: boundsResult,
       scale: s,
+      rectX: (visibleLeft - boundsResult.x) * s,
+      rectY: (visibleTop - boundsResult.y) * s,
+      rectW: visibleW * s,
+      rectH: visibleH * s,
+      visibleNodes,
     };
   }, [nodes, viewport, canvasWidth, canvasHeight, width, height]);
 
-  const getColor = (node: Node) =>
-    typeof nodeColor === 'function' ? nodeColor(node) : nodeColor;
-
-  // The visible portion of the canvas in flow coordinates
-  const visibleX = -viewport.x / viewport.zoom;
-  const visibleY = -viewport.y / viewport.zoom;
-  const visibleW = canvasWidth / viewport.zoom;
-  const visibleH = canvasHeight / viewport.zoom;
-
-  // Map to minimap coordinates
-  const rectX = (visibleX - bounds.x) * scale;
-  const rectY = (visibleY - bounds.y) * scale;
-  const rectW = visibleW * scale;
-  const rectH = visibleH * scale;
+  const getColor = typeof nodeColor === 'function' ? nodeColor : () => nodeColor;
 
   return (
     <View style={[styles.container, { width, height }, style]}>
       <Svg width={width} height={height}>
-        {/* Node rects */}
-        {nodes
-          .filter((n) => !n.hidden)
-          .map((node) => (
-            <Rect
-              key={node.id}
-              x={(node.position.x - bounds.x) * scale}
-              y={(node.position.y - bounds.y) * scale}
-              width={(node.width ?? 150) * scale}
-              height={(node.height ?? 40) * scale}
-              fill={node.selected ? '#1a73e8' : getColor(node)}
-              rx={2}
-            />
-          ))}
+        {visibleNodes.map((node) => (
+          <Rect
+            key={node.id}
+            x={(node.position.x - bounds.x) * scale}
+            y={(node.position.y - bounds.y) * scale}
+            width={(node.width ?? 150) * scale}
+            height={(node.height ?? 40) * scale}
+            fill={node.selected ? '#1a73e8' : getColor(node)}
+            rx={2}
+          />
+        ))}
 
-        {/* Viewport indicator — what's currently visible on screen */}
         <Rect
           x={rectX}
           y={rectY}
@@ -103,7 +97,7 @@ export const MiniMap: React.FC<MiniMapProps> = ({
       </Svg>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

@@ -23,6 +23,8 @@ export {
   flowToScreen,
   isPointInsideNode,
   getNodesBounds,
+  isNodeInViewport,
+  getVisibleNodeIds,
   getStraightPath,
   getBezierPath,
   getSmoothStepPath,

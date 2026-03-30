@@ -1,4 +1,4 @@
-import { XYPosition, HandlePosition, Node } from '../types';
+import { XYPosition, HandlePosition, Node, Viewport } from '../types';
 
 /**
  * Get the absolute position of a handle on a node.
@@ -106,4 +106,57 @@ export function getNodesBounds(nodes: Node[]): { x: number; y: number; width: nu
   }
 
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/**
+ * Check if a node is within the visible viewport (with buffer zone).
+ * Zero allocations — pure arithmetic comparisons.
+ */
+export function isNodeInViewport(
+  node: Node,
+  viewport: Viewport,
+  canvasWidth: number,
+  canvasHeight: number,
+  buffer: number = 0.5
+): boolean {
+  const w = node.width ?? 150;
+  const h = node.height ?? 40;
+
+  // Node bounds in screen coordinates
+  const screenLeft = node.position.x * viewport.zoom + viewport.x;
+  const screenTop = node.position.y * viewport.zoom + viewport.y;
+  const screenRight = screenLeft + w * viewport.zoom;
+  const screenBottom = screenTop + h * viewport.zoom;
+
+  // Expand viewport by buffer
+  const bufferX = canvasWidth * buffer;
+  const bufferY = canvasHeight * buffer;
+
+  // AABB overlap test
+  return (
+    screenRight >= -bufferX &&
+    screenLeft <= canvasWidth + bufferX &&
+    screenBottom >= -bufferY &&
+    screenTop <= canvasHeight + bufferY
+  );
+}
+
+/**
+ * Get the set of node IDs visible within the viewport.
+ * One Set allocation per call — used for O(1) edge filtering.
+ */
+export function getVisibleNodeIds(
+  nodes: Node[],
+  viewport: Viewport,
+  canvasWidth: number,
+  canvasHeight: number,
+  buffer?: number
+): Set<string> {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if (!node.hidden && isNodeInViewport(node, viewport, canvasWidth, canvasHeight, buffer)) {
+      ids.add(node.id);
+    }
+  }
+  return ids;
 }

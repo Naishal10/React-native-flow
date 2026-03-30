@@ -3,51 +3,33 @@ import { View, Text, StyleSheet } from 'react-native';
 import { NodeComponentProps } from '../types';
 import { Handle } from './Handle';
 
-export const DefaultNode: React.FC<NodeComponentProps> = ({
-  id,
-  data,
-  selected,
-}) => {
-  return (
-    <View style={[styles.node, selected && styles.selected]}>
-      <Handle nodeId={id} type="target" position="top" />
-      <Text style={styles.label} numberOfLines={1}>
-        {data.label ?? id}
-      </Text>
-      <Handle nodeId={id} type="source" position="bottom" />
-    </View>
-  );
-};
+export const DefaultNode = React.memo<NodeComponentProps>(({ id, data, selected }) => (
+  <View style={[styles.node, selected && styles.selected]}>
+    <Handle nodeId={id} type="target" position="top" />
+    <Text style={styles.label} numberOfLines={1}>
+      {data.label ?? id}
+    </Text>
+    <Handle nodeId={id} type="source" position="bottom" />
+  </View>
+));
 
-export const InputNode: React.FC<NodeComponentProps> = ({
-  id,
-  data,
-  selected,
-}) => {
-  return (
-    <View style={[styles.node, styles.inputNode, selected && styles.selected]}>
-      <Text style={styles.label} numberOfLines={1}>
-        {data.label ?? id}
-      </Text>
-      <Handle nodeId={id} type="source" position="bottom" />
-    </View>
-  );
-};
+export const InputNode = React.memo<NodeComponentProps>(({ id, data, selected }) => (
+  <View style={[styles.node, styles.inputNode, selected && styles.selected]}>
+    <Text style={styles.label} numberOfLines={1}>
+      {data.label ?? id}
+    </Text>
+    <Handle nodeId={id} type="source" position="bottom" />
+  </View>
+));
 
-export const OutputNode: React.FC<NodeComponentProps> = ({
-  id,
-  data,
-  selected,
-}) => {
-  return (
-    <View style={[styles.node, styles.outputNode, selected && styles.selected]}>
-      <Handle nodeId={id} type="target" position="top" />
-      <Text style={styles.label} numberOfLines={1}>
-        {data.label ?? id}
-      </Text>
-    </View>
-  );
-};
+export const OutputNode = React.memo<NodeComponentProps>(({ id, data, selected }) => (
+  <View style={[styles.node, styles.outputNode, selected && styles.selected]}>
+    <Handle nodeId={id} type="target" position="top" />
+    <Text style={styles.label} numberOfLines={1}>
+      {data.label ?? id}
+    </Text>
+  </View>
+));
 
 const styles = StyleSheet.create({
   node: {
