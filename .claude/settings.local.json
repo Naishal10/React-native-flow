@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-expo-app@latest . --template blank-typescript)",
+      "Bash(npx create-expo-app@latest . --template blank-typescript --yes)",
+      "Read(//private/tmp/**)",
+      "Bash(npx create-expo-app@latest rn-flow-temp --template blank-typescript)",
+      "Bash(cp -r /tmp/rn-flow-temp/* /Users/naishalpatel/Desktop/Projects/Reactnative-Projects/React-native-flow/)",
+      "Bash(cp /tmp/rn-flow-temp/.gitignore /Users/naishalpatel/Desktop/Projects/Reactnative-Projects/React-native-flow/)",
+      "Bash(npm install:*)",
+      "Bash(npx expo:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx -p typescript tsc --noEmit --project /Users/naishalpatel/Desktop/Projects/Reactnative-Projects/React-native-flow/tsconfig.json)",
+      "Bash(./node_modules/typescript/bin/tsc --noEmit)",
+      "Bash(kill 80926)"
+    ]
+  }
+}
